@@ -2,38 +2,60 @@
 
 import "../app/globals.css"
 import React, {useRef, useState} from "react";
-import {ocrToText} from "@/utils/ocr";
+import {ocrToData} from "@/utils/ocr";
 import Image from "next/image";
 import CardResult from "@/components/CardResult";
-import {id} from "postcss-selector-parser";
+import CardFakturPajak from "@/components/CardFakturPajak";
+import {Page} from "tesseract.js";
+import {emptyFaktur, ocrDataMapping} from "@/utils/mapping";
+import IFakturPajak from "@/models/FakturPajak";
 
 export default function Home() {
     const imageInputRef: any = useRef(null);
     const [processing, setProcessing] = useState<boolean>(false);
     const [result, setResult] = useState<Array<string>>([]);
     const [urlFile, setUrlFile] = useState<string>();
+    const [dataMap, setDataMap] = useState<IFakturPajak | undefined>(emptyFaktur);
+
     const openBrowseImage = async () => {
         await imageInputRef.current.click();
     };
 
-    const ocrConvertToText = async (url: string) => {
-       try {
-           if (url.length) {
-               setProcessing(true);
-               await ocrToText(url)
-                   .then((txt: string) => {
-                       let copyString: Array<string> = result;
-                       copyString.push(txt);
-                       setResult(copyString);
-                   });
-               setProcessing(false);
-           }
-       } catch (err: any) {
-           console.log(err);
-           setProcessing(false);
-       } finally {
-           setProcessing(false);
-       }
+    function addTextToHistory(history: Page | null) {
+        try {
+            let copyString: Array<string> = result;
+            if (history) {
+                copyString.push(history?.text);
+            }
+            setResult(copyString);
+        } catch (err: any) {
+            console.error(err);
+        }finally {
+            setProcessing(false);
+        }
+    }
+
+    async function ocrConvertToData(url: string) {
+        try {
+            if (!url.length) {
+                return;
+            }
+            setProcessing(true);
+            setDataMap(undefined);
+
+            let ocrData: Page | null = await ocrToData(url)
+            addTextToHistory(ocrData)
+            console.log("ocrData", ocrData?.text.includes("Faktur Pajak"))
+            if (ocrData?.text.includes("Faktur Pajak")) {
+                setDataMap(ocrDataMapping(ocrData));
+            }
+            setProcessing(false);
+        } catch (err: any) {
+            console.log(err);
+            setProcessing(false);
+        } finally {
+            setProcessing(false);
+        }
     };
 
   return (
@@ -46,7 +68,8 @@ export default function Home() {
                       if (e.target.files && e.target.files[0]) {
                           let url: string = URL.createObjectURL(e.target.files?.[0]!);
                           setUrlFile(url);
-                          ocrConvertToText(url);
+                          // ocrConvertToText(url);
+                          ocrConvertToData(url);
                       }
                   } catch (err) {
                       console.log(err);
@@ -65,7 +88,7 @@ export default function Home() {
                        openBrowseImage();
                    }}
               >
-                  <div className="text-xl md:text-xl text-center font-[800] text-gray-200">
+                  <div className="text-xl md:text-xl text-center font-[800] text-gray-200 pb-2 pt-1">
                       {processing ? "Processing Image..." : "Browse Your Image here"}
                   </div>
               </div>
@@ -76,12 +99,15 @@ export default function Home() {
                   <Image alt={"testing"} src={urlFile} height={100} width={100} layout={"responsive"}/>
               </div>
           }
-      </div>
+        </div>
+
+          {dataMap && (dataMap?.title?.toLowerCase().trim() == "faktur pajak")
+              && <CardFakturPajak fp={dataMap} />}
+
         <div className={"flex items-center justify-center flex-col-reverse gap-3 mx-56"}>
             {result.map((text, index) => {
                 return <CardResult str={text} idx={index} key={index}/>;
-            })
-            }
+            })}
         </div>
       </>
   );
